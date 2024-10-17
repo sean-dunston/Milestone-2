@@ -14,20 +14,19 @@ using namespace std;
 //  return from constructor
 BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) : 
     in(in), out(out), runLength(runlen), sortOrder(sortOrder) {
-    cout << "\nBigQ initialized\n";
-    cout << "SortOrder: " << sortOrder.getNumAtts() << endl;
-    //Open file to store pages
-    //file.Open(0, "sorted.txt");
-    int numPages = 0;
     // Create thread
+    cout << "Create worker thread\n";
     thread worker(&BigQ::sortWorker, this);
+    cout << "Worker thread created\n";
 
-    //worker.join();
+    if (worker.joinable()) {
+        std::cout << "Worker thread initialized successfully\n";
+    }
+
     // construct priority queue over sorted runs and dump sorted data 
  	// into the out pipe
-
     // finally shut down the out pipe
-	// out.ShutDown ();
+    worker.detach();
 }
 
 void BigQ::sortWorker() {
@@ -37,7 +36,6 @@ void BigQ::sortWorker() {
     int recordCap = runLength * PAGE_SIZE;
 
     // Loop while there are still records in the pipe
-    cout << "Loop\n";
     while (this->in.Remove(record) != 0) {
         records.push_back(record);
         cout << "Grabbing Record.\n";
@@ -51,12 +49,20 @@ void BigQ::sortWorker() {
         return compare.Compare(left, right, &sortOrder) < 0;
     });
 
-    out.Insert(records.front());
+    for (Record* record : records) {
+        out.Insert(record);
+        cout << "Inserted record in output pipe\n";
+    }
     cout << "Worker Done" << endl;
+    out.ShutDown();
+    
 }
 
 BigQ::~BigQ () {
-    //file.Close();
+    std::cout << "BigQ destructor called" << std::endl;
+    if (worker.joinable()) {  // Check if the worker thread is still running
+        worker.join();        // Wait for the worker thread to finish
+    }
 }
 
 int BigQ::sort (Pipe &in){

@@ -11,6 +11,11 @@
 // than right, depending upon the OrderMaker
 int ComparisonEngine :: Compare(Record *left, Record *right, OrderMaker *orderUs) {
 
+	if (!left || !right || !orderUs) {
+        std::cerr << "Invalid pointers in Compare function!" << std::endl;
+        std::abort();
+    }
+
 	char *val1, *val2;
 
 	char *left_bits = left->GetBits();

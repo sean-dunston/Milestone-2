@@ -50,6 +50,9 @@ class OrderMaker {
 
 public:
 	
+	//for debugging
+	int getNumAtts();
+
 	// creates an empty OrdermMaker
 	OrderMaker();
 

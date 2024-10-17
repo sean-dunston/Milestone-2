@@ -17,9 +17,11 @@ class BigQ {
 private:
     Pipe &in;              // Reference to the input pipe
     Pipe &out;             // Reference to the output pipe
-    OrderMaker &sortOrder;        // Reference to the order maker for sorting
     int runLength;                // The run length in pages
+    OrderMaker sortOrder;
 	std::thread worker;
+	File file;
+    ComparisonEngine compare;
 
 	//void worker();
 	int sort(Pipe &in);
@@ -27,6 +29,8 @@ private:
 public:
     // Constructor: Initializes the BigQ with input and output pipes, sorting order, and run length
     BigQ(Pipe &inPipe, Pipe &outPipe, OrderMaker &sortOrder, int runLen);
+
+    void sortWorker();
 
     // Destructor: Joins the worker thread and closes the file
     ~BigQ();

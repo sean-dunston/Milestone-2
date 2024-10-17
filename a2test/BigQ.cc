@@ -12,40 +12,47 @@ using namespace std;
 //              Write out sorted records as a run
 //              Append all runs to the same file
 //  return from constructor
-BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortorder, int runlen) : 
-    in(in), out(out), sortOrder(sortOrder) {
-    cout << "BigQ initialized\n";
+BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) : 
+    in(in), out(out), runLength(runlen), sortOrder(sortOrder) {
+    cout << "\nBigQ initialized\n";
+    cout << "SortOrder: " << sortOrder.getNumAtts() << endl;
     //Open file to store pages
     //file.Open(0, "sorted.txt");
     int numPages = 0;
     // Create thread
-    thread worker([this, &numPages, &runlen]() {
-            cout << "Worker thread is running...\n";
-            Record* record = new Record();
-            std::vector<Record*> records;
-            int recordCap = runlen * PAGE_SIZE;
-            //Loop while there are still records in the pipe
-            cout << "Loop\n";
-            while (this->in.Remove(record) != 0){ 
-                records.push_back(record);
-                // If the page is full, add the page to the file
-                cout << "Grabbing Record.\n";
-            }
-            ComparisonEngine compare;
-            cout << "Created Comparator\n";
-            std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
-                cout << "Sorting: " << compare.Compare(left, right, &sortOrder) << endl;
-                return compare.Compare(left, right, &sortOrder) < 0;
-            });
-            cout << "Worker Done" << endl;
-        });
+    thread worker(&BigQ::sortWorker, this);
 
-    worker.join();
+    //worker.join();
     // construct priority queue over sorted runs and dump sorted data 
  	// into the out pipe
 
     // finally shut down the out pipe
 	// out.ShutDown ();
+}
+
+void BigQ::sortWorker() {
+    cout << "Worker thread is running...\n";
+    Record* record = new Record();
+    std::vector<Record*> records;
+    int recordCap = runLength * PAGE_SIZE;
+
+    // Loop while there are still records in the pipe
+    cout << "Loop\n";
+    while (this->in.Remove(record) != 0) {
+        records.push_back(record);
+        cout << "Grabbing Record.\n";
+    }
+
+    ComparisonEngine compare;
+    cout << "Created Comparator\n";
+
+    // Sort the records using the Compare function
+    std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
+        return compare.Compare(left, right, &sortOrder) < 0;
+    });
+
+    out.Insert(records.front());
+    cout << "Worker Done" << endl;
 }
 
 BigQ::~BigQ () {

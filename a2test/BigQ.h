@@ -34,6 +34,7 @@ public:
 
     // Destructor: Joins the worker thread and closes the file
     ~BigQ();
+    int sort(std::vector<Record *> &records);
 };
 
 #endif // BIGQ_H

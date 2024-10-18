@@ -15,9 +15,9 @@ using namespace std;
 BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) : 
     in(in), out(out), runLength(runlen), sortOrder(sortOrder) {
     // Create thread
-    cout << "Create worker thread\n";
+    //cout << "Create worker thread\n";
     thread worker(&BigQ::sortWorker, this);
-    cout << "Worker thread created\n";
+    //cout << "Worker thread created\n";
 
     if (worker.joinable()) {
         std::cout << "Worker thread initialized successfully\n";
@@ -33,30 +33,69 @@ void BigQ::sortWorker() {
     cout << "Worker thread is running...\n";
     Record* record = new Record();
     std::vector<Record*> records;
+    std::vector<off_t> runLocation;
+    ComparisonEngine compare;
+    Page page;
     int recordCap = runLength * PAGE_SIZE;
+    File file;
+    char* fileName = "records.txt";
+    file.Open(0, fileName);
 
     // Loop while there are still records in the pipe
     while (this->in.Remove(record) != 0) {
-        records.push_back(record);
-        cout << "Grabbing Record.\n";
+        runLocation.push_back(file.GetLength());
+        for (int numRecords = 0; numRecords < recordCap; numRecords++) {
+            records.push_back(record);
+            numRecords++;
+            if (this->in.Remove(record) == 0) {
+                break;
+            }
+            //cout << "Grabbing Record.\n";
+        }
+        //sort vector
+        std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
+            return compare.Compare(left, right, &sortOrder) < 0;
+        });
+        // Push vector to file
+        for (Record* record : records) {
+            Record* temp = new Record();                    ///////////////////
+            temp->Copy(record);                             // Need to remove somehow... Deep copy is 
+            //cout << "Next record: " << &temp << endl;     // expensive and unessesarry
+                                                            ///////////////////
+            // If page is full push it to the file.
+            if (page.Append(temp) == 0) {
+                cout << "Next page\n";
+                file.AddPage(&page, file.GetLength());
+                page.EmptyItOut();
+            }
+            free(temp);
+        }
+        file.AddPage(&page, file.GetLength());
+        page.EmptyItOut();
+        records.clear();
     }
 
-    ComparisonEngine compare;
-    cout << "Created Comparator\n";
+    // TODO PHOEBE ////////////////////////////////TODO PHOEBE//////////////////////////////
+    // Implement part 2 of TPMMS
+    // load the first element of each run and push the smallest to out
+    // replace the pushed element with the next smallest and repeat
+    // until all elements are pushed to out
+    // The start of each run is stored in off_t runLocation
 
-    // Sort the records using the Compare function
-    std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
-        return compare.Compare(left, right, &sortOrder) < 0;
-    });
-
-    for (Record* record : records) {
-        out.Insert(record);
-        cout << "Inserted record in output pipe\n";
-    }
+    Page* page_ptr;
+    //for (off_t run : runLocation) {
+        file.GetPage(page_ptr, runLocation.front());
+        page_ptr->MoveToFirst();
+        while (page_ptr->GetFirst(record) != 0) {
+            out.Insert(record);
+        }
+        //cout << "Inserted record in output pipe\n";
+    //}
     cout << "Worker Done" << endl;
     out.ShutDown();
     
 }
+// hello world
 
 BigQ::~BigQ () {
     std::cout << "BigQ destructor called" << std::endl;
@@ -65,11 +104,11 @@ BigQ::~BigQ () {
     }
 }
 
-int BigQ::sort (Pipe &in){
+int BigQ::sort (std::vector<Record*> &records){
 	return 0;
 }
 /*
-// Worker function to be run by the worker thread
+// Worker function to be run by the worker threadl
 void BigQ::worker() {
     cout << "Try to do work" << endl;
     Page records;

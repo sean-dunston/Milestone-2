@@ -33,17 +33,17 @@ void BigQ::sortWorker() {
     cout << "Worker thread is running...\n";
     Record* record = new Record();
     std::vector<Record*> records;
-    std::vector<off_t> runLocation;
+    //std::vector<off_t> runLocation;
     ComparisonEngine compare;
-    Page page;
     int recordCap = runLength * PAGE_SIZE;
     File file;
     char* fileName = "records.txt";
     file.Open(0, fileName);
+    int numPages = 0;
 
     // Loop while there are still records in the pipe
     while (this->in.Remove(record) != 0) {
-        runLocation.push_back(file.GetLength());
+        //runLocation.push_back(file.GetLength());
         for (int numRecords = 0; numRecords < recordCap; numRecords++) {
             records.push_back(record);
             numRecords++;
@@ -66,11 +66,19 @@ void BigQ::sortWorker() {
             if (page.Append(temp) == 0) {
                 cout << "Next page\n";
                 file.AddPage(&page, file.GetLength());
+                numPages++;
                 page.EmptyItOut();
+                page.Append(temp);
             }
+            cout << "Appended Record to page\n";
             free(temp);
         }
-        file.AddPage(&page, file.GetLength());
+        if (!page.IsEmpty()) {
+            file.AddPage(&page, file.GetLength());
+            cout << "Added page to file\n";
+            cout << "There are " << page.GetNumRecs() << " records on the page\n";
+            numPages++;
+        }
         page.EmptyItOut();
         records.clear();
     }
@@ -82,16 +90,19 @@ void BigQ::sortWorker() {
     // until all elements are pushed to out
     // The start of each run is stored in off_t runLocation
 
-    Page* page_ptr;
-    //for (off_t run : runLocation) {
-        file.GetPage(page_ptr, runLocation.front());
+    Page* page_ptr = new Page();
+    cout << "numPages: " << numPages << endl;
+    for (int i = 0; i < numPages; i++) {
+        cout << "There are " << file.GetLength() << " pages in the file\n";
+        file.GetPage(page_ptr, i);
         page_ptr->MoveToFirst();
         while (page_ptr->GetFirst(record) != 0) {
             out.Insert(record);
         }
         //cout << "Inserted record in output pipe\n";
-    //}
+    }
     cout << "Worker Done" << endl;
+    file.Close();
     out.ShutDown();
     
 }
@@ -107,119 +118,3 @@ BigQ::~BigQ () {
 int BigQ::sort (std::vector<Record*> &records){
 	return 0;
 }
-/*
-// Worker function to be run by the worker threadl
-void BigQ::worker() {
-    cout << "Try to do work" << endl;
-    Page records;
-    Record *temp;
-    in.Remove(temp);
-    records.Append(temp);
-    cout << "Worker Started" << endl;
-    return;
-}
-//Pipe: Insert, Remove
-
-//
-
-
-/*
-#include "BigQ.h"
-
-// Worker function to be run by the worker thread
-void* BigQ::worker(void* arg) {
-    cout << "Try to do work" << endl;
-    BigQ* bigQ = static_cast<BigQ*>(arg);
-    bigQ->sortAndProcess();
-    cout << "Worker Started" << endl;
-    return nullptr;
-}
-
-// Function to process records from inputPipe, sort them into runs, and write to file
-void BigQ::sortAndProcess() {
-    std::vector<Record> records;
-    Record temp;
-
-    int pageCount = 0;
-
-    // Loop through the input pipe, creating sorted runs and writing them to the file
-    cout << "Remove from pipe" << endl;
-    while (inputPipe.Remove(&temp)) {
-        records.push_back(temp);
-        cout << "Pushed a record to the vector" << endl;
-        // Simulate the page size check. If the records exceed the run length (number of pages), sort and write to file
-        pageCount++;  // Assume each record takes up one page for simplicity
-
-        if (pageCount >= runLength) {
-            sortRecords(records);
-            cout << "Sorted Records" << endl;
-            writeRunToFile(records);
-            cout << "Wrote to File" << endl;
-            records.clear();  // Clear buffer for the next run
-            pageCount = 0;    // Reset page count for the next run
-        }
-        cout << "SortAndProcess Looped once" << endl;
-    }
-    cout << "Removed from pipe" << endl;
-    // Process any remaining records
-    if (!records.empty()) {
-        sortRecords(records);
-        writeRunToFile(records);
-    }
-
-    outputPipe.ShutDown();  // Signal that we're done producing
-}
-
-// Function to sort records according to the OrderMaker
-void BigQ::sortRecords(std::vector<Record>& records) {
-    std::sort(records.begin(), records.end(), [&](const Record &a, const Record &b) {
-        return compare.Compare(const_cast<Record*>(&a), const_cast<Record*>(&b), &sortOrder) < 0;
-    });
-}
-
-// Function to write a sorted run to the file
-void BigQ::writeRunToFile(std::vector<Record>& records) {
-    Page page;
-    page.EmptyItOut();  // Start with an empty page
-
-    for (Record& rec : records) {
-        if (!page.Append(&rec)) {  // If the page is full, write the page to the file and start a new page
-            file.AddPage(&page, currentPageOffset);
-            currentPageOffset++;   // Increment the offset for the next page
-            page.EmptyItOut();
-            page.Append(&rec);     // Append the record to the new page
-        }
-    }
-
-    // Write the last page
-    if (page.GetNumRecs() > 0) {
-        file.AddPage(&page, currentPageOffset);
-        currentPageOffset++;   // Increment the offset for the next page
-    }
-}
-
-// Constructor: Initializes the BigQ with input and output pipes, sorting order, and run length
-BigQ::BigQ(Pipe &inPipe, Pipe &outPipe, OrderMaker &sortOrder, int runLen)
-    : inputPipe(inPipe), outputPipe(outPipe), sortOrder(sortOrder), runLength(runLen), file() {
-    // Open file to store sorted runs
-    cout << "try to open" << endl;
-    file.Open(0, "sorted_runs.bin");
-    cout << "It Opened" << endl;
-
-    // Initialize the offset for page writing
-    currentPageOffset = 0;
-
-    // Create a worker thread to process records
-    pthread_create(&workerThread, nullptr, worker, this);
-    cout << "Thread Created" << endl;
-}
-
-// Destructor: Joins the worker thread and closes the file
-BigQ::~BigQ() {
-    // Wait for the worker thread to finish
-    pthread_join(workerThread, nullptr);
-
-    // Close file after processing
-    file.Close();
-}
-*/

@@ -112,6 +112,23 @@ void Page :: FromBinary (char *bits) {
 	// So we need to move it to first mannually after GetPage. 
 
 	// first read the number of records on the page
+	cout << bits << endl;
+
+	if (this == nullptr) {
+        std::cerr << "Error: Page::FromBinary called on a null object" << std::endl;
+        return;
+    }
+
+    if (bits == nullptr) {
+        std::cerr << "Error: bits is nullptr in Page::FromBinary" << std::endl;
+        return;
+    }
+
+    if (reinterpret_cast<uintptr_t>(bits) % alignof(int) != 0) {
+        std::cerr << "Error: bits is not properly aligned for an int" << std::endl;
+        return;
+    }
+	
 	numRecs = ((int *) bits)[0];
 
 	// sanity check

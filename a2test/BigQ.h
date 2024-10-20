@@ -21,6 +21,7 @@ private:
     OrderMaker sortOrder;
 	std::thread worker;
 	File file;
+    Page page;
     ComparisonEngine compare;
 
 	//void worker();
@@ -37,7 +38,7 @@ public:
     int sort(std::vector<Record *> &records);
 };
 
-#endif // BIGQ_H
+#endif //  BIGQ_H
 
 #ifndef BIGQ_H
 #define BIGQ_H

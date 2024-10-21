@@ -31,7 +31,6 @@ BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) :
 }
 
 void BigQ::sortWorker() {
-    cout << "Worker thread is running...\n";
     Record* record = new Record();
     std::vector<Record*> records;  // Vector to hold unique record pointers
     ComparisonEngine compare;
@@ -89,7 +88,6 @@ void BigQ::sortWorker() {
 
     runSecondPhaseTPMMS(out, sortOrder, runLength, numRuns);
     
-    cout << "Worker Done" << endl;
     file.Close();
     out.ShutDown();
     
@@ -122,7 +120,6 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
     // Initialize the heap with the first record from each run
     for (int run = 0; run < numRuns; ++run) {
         int pageNumber = run * runLength;  // The first page of each run
-        std::cout << "Get page " << pageNumber << " of " << totalPages;
         if (pageNumber < totalPages - 1) {
             if (pageArray[run] == nullptr) {
                 pageArray[run] = new Page();  // Allocate a new Page object
@@ -140,7 +137,6 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
 
     // Merge process
     while (!minHeap.empty()) {
-        std::cout << "Processing Heap\n";
         // Get the smallest record from the heap
         auto minRec = minHeap.top();
         minHeap.pop();

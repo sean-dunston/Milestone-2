@@ -33,60 +33,60 @@ BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) :
 void BigQ::sortWorker() {
     cout << "Worker thread is running...\n";
     Record* record = new Record();
-    std::vector<Record*> records;
-    //std::vector<off_t> runLocation;
+    std::vector<Record*> records;  // Vector to hold unique record pointers
     ComparisonEngine compare;
     int recordCap = runLength * PAGE_SIZE / sizeof(record);
-    File file;
     char* fileName = "records.txt";
     file.Open(0, fileName);
     int numPages = 0;
     int numRuns = 0;
-    Record* temp = new Record();
-    Record* toAdd = new Record();
 
     // Loop while there are still records in the pipe
     while (this->in.Remove(record) != 0) {
-        //runLocation.push_back(file.GetLength());
         numRuns++;
         for (int numRecords = 0; numRecords < recordCap; numRecords++) {
-            records.push_back(record);
-            numRecords++;
+            // Allocate a new record for each record being removed from the pipe
+            Record* newRecord = new Record();  // Ensure each record gets its own memory
+            newRecord->Copy(record);  // Copy the contents of the current record into the new one
+            records.push_back(newRecord);  // Push the unique pointer to the vector
+
             if (this->in.Remove(record) == 0) {
                 break;
             }
-            //cout << "Grabbing Record.\n";
         }
-        //sort vector
+
+        // Sort the records vector
         std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
             return compare.Compare(left, right, &sortOrder) < 0;
         });
-        // Push vector to file
+
+        // Push sorted records to the file
         for (Record* record : records) {
-            Record* temp = new Record();                    ///////////////////
-            temp->Copy(record);                             // Need to remove somehow... Deep copy is 
-            //cout << "Next record: " << &temp << endl;     // expensive and unessesarry
-                                                            ///////////////////
-            // If page is full push it to the file.
-            if (page.Append(temp) == 0) {
-                cout << "Next page\n";
+            // Append records to the page
+            if (page.Append(record) == 0) {  // If page is full, push it to the file
+                std::cout << "Next page\n";
                 file.AddPage(&page, file.GetLength());
                 numPages++;
                 page.EmptyItOut();
-                page.Append(temp);
+                page.Append(record);  // Append the remaining record to the new page
             }
-            //cout << "Appended Record to page\n";
-            free(temp);
         }
-        if (!page.IsEmpty()) {
+
+        if (!page.IsEmpty()) {  // If there's data left in the page, add it to the file
             file.AddPage(&page, file.GetLength());
-            cout << "Added page to file\n";
-            cout << "There are " << page.GetNumRecs() << " records on the page\n";
+            std::cout << "Added page to file\n";
+            std::cout << "There are " << page.GetNumRecs() << " records on the page\n";
             numPages++;
         }
+
+        // Cleanup and prepare for the next batch of records
         page.EmptyItOut();
-        records.clear();
+        for (Record* rec : records) {
+            //delete rec;  // Free the memory allocated for each unique record
+        }
+        records.clear();  // Clear the vector for the next run
     }
+
 
     
     // TODO PHOEBE ////////////////////////////////TODO PHOEBE//////////////////////////////
@@ -96,15 +96,13 @@ void BigQ::sortWorker() {
     // until all elements are pushed to out
     // The start of each run can be found with run# * runlength.
     // If you run out of pages in a run, ignore this run in future checks.
-    runSecondPhaseTPMMS(out, sortOrder, runLength, file, numRuns);
+    runSecondPhaseTPMMS(out, sortOrder, runLength, numRuns);
     
     cout << "Worker Done" << endl;
     file.Close();
     out.ShutDown();
     
 }
-// hello world
-
 // Custom comparison for the priority queue (min-heap)
 struct CompareRecords {
     OrderMaker &order;        // Reference to the OrderMaker
@@ -121,13 +119,11 @@ struct CompareRecords {
     }
 };
 
-void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runLength, File& file, int numRuns) {
+void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runLength, int numRuns) {
     // Priority queue to store the smallest records from each page (min-heap)
     ComparisonEngine compare;
     std::priority_queue<std::pair<Record*, int>, std::vector<std::pair<Record*, int>>, CompareRecords> minHeap(CompareRecords(sortOrder, compare));
 
-    // Record to hold the data extracted from the pages
-    Record* toAdd = new Record();
     std::vector<int> pageOffset(numRuns, 0);  // Track the current page within each run
     std::vector<Page*> pageArray(numRuns, nullptr);  // Page pointers for each run
     int totalPages = file.GetLength();
@@ -135,14 +131,25 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
     // Initialize the heap with the first record from each run
     for (int run = 0; run < numRuns; ++run) {
         int pageNumber = run * runLength;  // The first page of each run
-        file.GetPage(pageArray[run], pageNumber);
-        if (pageArray[run]->GetFirst(toAdd) != 0) {  // If the page has at least one record
-            minHeap.push({new Record(*toAdd), run});  // Push the first record and its corresponding run index
+        std::cout << "Get page " << pageNumber << " of " << totalPages;
+        if (pageNumber < totalPages - 1) {
+            if (pageArray[run] == nullptr) {
+                pageArray[run] = new Page();  // Allocate a new Page object
+            }
+            file.GetPage(pageArray[run], pageNumber);  // Now it's safe to use
+            
+            Record* firstRecord = new Record();  // Create a unique pointer for the first record
+            if (pageArray[run]->GetFirst(firstRecord) != 0) {  // If the page has at least one record
+                minHeap.push({firstRecord, run});  // Push the unique record pointer and its corresponding run index
+            } else {
+                delete firstRecord;  // If no record is fetched, delete the unused pointer
+            }
         }
     }
 
     // Merge process
     while (!minHeap.empty()) {
+        std::cout << "Processing Heap\n";
         // Get the smallest record from the heap
         auto minRec = minHeap.top();
         minHeap.pop();
@@ -150,15 +157,20 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
         // Output the smallest record to the final sorted output
         outputPipe.Insert(minRec.first);
 
+        // No need to delete minRec.first, as the record is consumed by Pipe::Insert
+
         // Get the next record from the same run
         int runIndex = minRec.second;
         bool recordAvailable = false;
 
+        Record* nextRecord = new Record();  // Create a new unique pointer for the next record
         // Try to fetch the next record from the current page in the run
-        if (pageArray[runIndex]->GetFirst(toAdd) != 0) {
-            // Still records in the current page, add the next record to the heap
-            minHeap.push({new Record(*toAdd), runIndex});
+        if (pageArray[runIndex]->GetFirst(nextRecord) != 0) {
+            // Still records in the current page, add the next record pointer to the heap
+            minHeap.push({nextRecord, runIndex});
             recordAvailable = true;
+        } else {
+            delete nextRecord;  // If no record is fetched, delete the unused pointer
         }
 
         // If no record available in the current page, move to the next page within the same run
@@ -166,22 +178,35 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
             pageOffset[runIndex]++;  // Move to the next page in the run
             int pageNumber = runIndex * runLength + pageOffset[runIndex];  // Calculate the page number
 
-            if (pageOffset[runIndex] < runLength && pageNumber < totalPages) {
-                // If there are still pages left in this run
+            if (pageOffset[runIndex] < runLength && pageNumber < totalPages - 1) {
+                if (pageArray[runIndex] != nullptr) {
+                    delete pageArray[runIndex];  // Free the previous Page object
+                    pageArray[runIndex] = nullptr;
+                }
+
+                pageArray[runIndex] = new Page();  // Allocate a new Page object
                 file.GetPage(pageArray[runIndex], pageNumber);  // Load the next page in the run
-                if (pageArray[runIndex]->GetFirst(toAdd) != 0) {  // Fetch the first record from the new page
-                    minHeap.push({new Record(*toAdd), runIndex});
+
+                Record* nextPageRecord = new Record();  // Create a new unique pointer for the first record of the new page
+                if (pageArray[runIndex]->GetFirst(nextPageRecord) != 0) {  // Fetch the first record from the new page
+                    minHeap.push({nextPageRecord, runIndex});
+                } else {
+                    delete nextPageRecord;  // If no record is fetched, delete the unused pointer
                 }
             }
         }
 
-        // Free the memory for the extracted record
-        delete minRec.first;
+        // No manual deletion of records is done, as they are consumed by Pipe::Insert
     }
 
-    // Clean up the allocated memory
-    delete toAdd;
+    // Clean up Page pointers
+    for (int run = 0; run < numRuns; ++run) {
+        if (pageArray[run] != nullptr) {
+            delete pageArray[run];  // Free the Page objects
+        }
+    }
 }
+
 
 BigQ::~BigQ () {
     std::cout << "BigQ destructor called" << std::endl;

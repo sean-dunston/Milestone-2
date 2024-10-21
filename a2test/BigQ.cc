@@ -1,5 +1,6 @@
 #include "BigQ.h"
 #include <thread>
+#include <queue>
 using namespace std;
 
 //BigQ Constructor
@@ -87,6 +88,7 @@ void BigQ::sortWorker() {
         records.clear();
     }
 
+    
     // TODO PHOEBE ////////////////////////////////TODO PHOEBE//////////////////////////////
     // Implement part 2 of TPMMS
     // load the first element of each run and push the smallest to out
@@ -94,120 +96,92 @@ void BigQ::sortWorker() {
     // until all elements are pushed to out
     // The start of each run can be found with run# * runlength.
     // If you run out of pages in a run, ignore this run in future checks.
-
-    Page* page_ptr = new Page();
-    std::vector<Record*> recArray(numRuns);
-    std::vector<int> pageOffset(numRuns, 0);
-    std::vector<Page*> pageArray(numRuns);
-    //Record* temp = new Record();
-    int totalPages = file.GetLength();
-    for (int run = 0; run < numRuns; run++) {
-        bool valid = false;
-        cout << "Run " << run + 1 << " of " << numRuns << endl;
-        // Make sure we have a valid record and add it to recArray, if not, find the next valid record
-        // If we do not have the current page of this run, store it in the array
-        while (!valid) {
-            
-            // check to see if there are any more records in the run
-            if (pageOffset[run] < runLength) {
-                if (pageArray[run] == nullptr) {
-                //cout << "Page number = " << (page_ptr, run * runLength + pageOffset[run]) << endl;
-                file.GetPage(page_ptr, run * runLength + pageOffset[run]);
-                pageArray[run] = page_ptr;
-                }
-                pageArray[run]->MoveToFirst();
-                // Check to see if we have exhausted the page and increment to the next one
-                cout << "Getting first record of the run\n";
-                cout << "There are " << pageArray[run]->GetNumRecs() << " records on the page\n";
-                if(pageArray[run]->GetFirst(temp) == 0) {
-                    pageOffset[run]++;
-                    pageArray[run] = nullptr;
-                } else {
-                    valid = true;
-                    recArray[run] = temp;
-                    cout << "Smallest record of run added to the array\n";
-                }
-            } else {
-                recArray[run] = nullptr;
-                valid = true;
-            }
-            //recArray[run] = //the first record of the run's first page;
-        }
-    }
-    cout << "Finished initial array\n";
-    while (true) {
-        auto minRec = std::min_element(recArray.begin(), recArray.end(), [&](Record* left, Record* right) {
-            return compare.Compare(left, right, &sortOrder) == 1;
-        });
-        int minIndex = std::distance(recArray.begin(), minRec);
-        //recArray[minIndex] 
-        //cout << "At position " << minIndex << " of " << recArray.size() << endl;
-        if (!recArray.empty() && minRec != records.end()) {
-            //cout << "Output record\n";
-            //out.Insert(*minRec);
-            out.Insert(recArray[minIndex]);
-        } else {
-            cout << "minRec was empty\n";
-            break;
-        }
-        //pageArray[minIndex]->GetFirst(recArray[minIndex]);
-        //////////////////////////////////////////////////////////////////////////////
-        bool valid = false;
-        while (!valid) {
-            int pageNumber = minIndex * runLength + pageOffset[minIndex];
-            cout << "Page number = " << pageNumber << " of " << totalPages << " pages\n";
-            cout << "Min Index = " << minIndex << ", Page Offset = " << pageOffset[minIndex] << endl;
-            // check to see if there are any more records in the run
-            if (pageOffset[minIndex] < runLength && pageNumber < totalPages - 1) {
-                if (pageArray[minIndex] == nullptr) {
-                //cout << "Page number = " << pageNumber << " of " << totalPages << " pages\n";
-
-                file.GetPage(page_ptr, pageNumber);
-                pageArray[minIndex] = page_ptr;
-            }
-                // Check to see if we have exhausted the page and increment to the next one
-                //Record* toAdd = new Record();
-                pageArray[minIndex]->MoveToFirst();
-                if(pageArray[minIndex]->GetFirst(toAdd) == 0) {
-                    cout << "increment page\n";
-                    pageOffset[minIndex]++;
-                    pageArray[minIndex] = nullptr;
-                } else {
-                    recArray[minIndex] = toAdd;
-                    valid = true;
-                    cout << "Continued without incrementing page\n";
-                }
-            } else if (!recArray.empty()) {
-                recArray.erase(recArray.begin() + minIndex);
-                pageOffset.erase(pageOffset.begin() + minIndex);
-                pageArray.erase(pageArray.begin() + minIndex);
-                valid = true;
-            } else {
-                valid = true;
-            }
-            //recArray[run] = //the first record of the run's first page;
-        }
-    }
-    /*
-    Page* page_ptr = new Page();
-    cout << "numPages: " << numPages << endl;
-    for (int i = 0; i < numPages; i++) {
-        //cout << "There are " << file.GetLength() << " pages in the file\n";
-        file.GetPage(page_ptr, i);
-        page_ptr->MoveToFirst();
-        while (page_ptr->GetFirst(record) != 0) {
-            out.Insert(record);
-        }
-        //cout << "Inserted record in output pipe\n";
-    }
-    */
-    delete temp;
+    runSecondPhaseTPMMS(out, sortOrder, runLength, file, numRuns);
+    
     cout << "Worker Done" << endl;
     file.Close();
     out.ShutDown();
     
 }
 // hello world
+
+// Custom comparison for the priority queue (min-heap)
+struct CompareRecords {
+    OrderMaker &order;        // Reference to the OrderMaker
+    ComparisonEngine &compare;  // Reference to the ComparisonEngine
+
+    // Constructor to initialize OrderMaker and ComparisonEngine
+    CompareRecords(OrderMaker &orderMaker, ComparisonEngine &compEngine) 
+        : order(orderMaker), compare(compEngine) {}
+
+    // Overload the call operator to perform the comparison
+    bool operator()(const std::pair<Record*, int>& left, const std::pair<Record*, int>& right) {
+        // Use compare.Compare to compare the two Record pointers based on the OrderMaker
+        return compare.Compare(left.first, right.first, &order) > 0;
+    }
+};
+
+void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runLength, File& file, int numRuns) {
+    // Priority queue to store the smallest records from each page (min-heap)
+    ComparisonEngine compare;
+    std::priority_queue<std::pair<Record*, int>, std::vector<std::pair<Record*, int>>, CompareRecords> minHeap(CompareRecords(sortOrder, compare));
+
+    // Record to hold the data extracted from the pages
+    Record* toAdd = new Record();
+    std::vector<int> pageOffset(numRuns, 0);  // Track the current page within each run
+    std::vector<Page*> pageArray(numRuns, nullptr);  // Page pointers for each run
+    int totalPages = file.GetLength();
+
+    // Initialize the heap with the first record from each run
+    for (int run = 0; run < numRuns; ++run) {
+        int pageNumber = run * runLength;  // The first page of each run
+        file.GetPage(pageArray[run], pageNumber);
+        if (pageArray[run]->GetFirst(toAdd) != 0) {  // If the page has at least one record
+            minHeap.push({new Record(*toAdd), run});  // Push the first record and its corresponding run index
+        }
+    }
+
+    // Merge process
+    while (!minHeap.empty()) {
+        // Get the smallest record from the heap
+        auto minRec = minHeap.top();
+        minHeap.pop();
+
+        // Output the smallest record to the final sorted output
+        outputPipe.Insert(minRec.first);
+
+        // Get the next record from the same run
+        int runIndex = minRec.second;
+        bool recordAvailable = false;
+
+        // Try to fetch the next record from the current page in the run
+        if (pageArray[runIndex]->GetFirst(toAdd) != 0) {
+            // Still records in the current page, add the next record to the heap
+            minHeap.push({new Record(*toAdd), runIndex});
+            recordAvailable = true;
+        }
+
+        // If no record available in the current page, move to the next page within the same run
+        if (!recordAvailable) {
+            pageOffset[runIndex]++;  // Move to the next page in the run
+            int pageNumber = runIndex * runLength + pageOffset[runIndex];  // Calculate the page number
+
+            if (pageOffset[runIndex] < runLength && pageNumber < totalPages) {
+                // If there are still pages left in this run
+                file.GetPage(pageArray[runIndex], pageNumber);  // Load the next page in the run
+                if (pageArray[runIndex]->GetFirst(toAdd) != 0) {  // Fetch the first record from the new page
+                    minHeap.push({new Record(*toAdd), runIndex});
+                }
+            }
+        }
+
+        // Free the memory for the extracted record
+        delete minRec.first;
+    }
+
+    // Clean up the allocated memory
+    delete toAdd;
+}
 
 BigQ::~BigQ () {
     std::cout << "BigQ destructor called" << std::endl;

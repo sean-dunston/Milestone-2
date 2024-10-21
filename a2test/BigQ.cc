@@ -57,7 +57,7 @@ void BigQ::sortWorker() {
 
         // Sort the records vector
         std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
-            return compare.Compare(left, right, &sortOrder) < 0;
+            return compare.Compare(left, right, &sortOrder) > 0;
         });
 
         // Push sorted records to the file
@@ -87,15 +87,6 @@ void BigQ::sortWorker() {
         records.clear();  // Clear the vector for the next run
     }
 
-
-    
-    // TODO PHOEBE ////////////////////////////////TODO PHOEBE//////////////////////////////
-    // Implement part 2 of TPMMS
-    // load the first element of each run and push the smallest to out
-    // replace the pushed element with the next smallest and repeat
-    // until all elements are pushed to out
-    // The start of each run can be found with run# * runlength.
-    // If you run out of pages in a run, ignore this run in future checks.
     runSecondPhaseTPMMS(out, sortOrder, runLength, numRuns);
     
     cout << "Worker Done" << endl;

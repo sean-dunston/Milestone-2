@@ -13,7 +13,7 @@ using namespace std;
 //              Write out sorted records as a run
 //              Append all runs to the same file
 //  return from constructor
-BigQ :: BigQ (Pipe &in, Pipe &out, OrderMaker &sortOrder, int runlen) : 
+BigQ :: BigQ (Pipe &in, Pipe &out, const OrderMaker &sortOrder, int runlen) : 
     in(in), out(out), runLength(runlen), sortOrder(sortOrder) {
     // Create thread
     //cout << "Create worker thread\n";
@@ -34,40 +34,52 @@ void BigQ::sortWorker() {
     Record* record = new Record();
     std::vector<Record*> records;  // Vector to hold unique record pointers
     ComparisonEngine compare;
-    int recordCap = runLength * PAGE_SIZE / sizeof(record);
+    int recordCap = runLength * PAGE_SIZE / (sizeof(Record));
+
     char* fileName = "records.txt";
     file.Open(0, fileName);
     int numPages = 0;
     int numRuns = 0;
+    int numRecs = 1;
+    int totalRecordSize = 0; //TESTING delete this
+    int sizeOfRecord = (sizeof(Record));  //TESTING delete
 
     // Loop while there are still records in the pipe
     while (this->in.Remove(record) != 0) {
         numRuns++;
-        for (int numRecords = 0; numRecords < recordCap; numRecords++) {
+        for (int recs = 0; recs < recordCap; recs++) {
+            //totalRecordSize += sizeOfRecord;
+            //std::cout << "Adding record: " << sizeof(Record) << "/" << PAGE_SIZE << "/" << totalRecordSize << endl;
+
             // Allocate a new record for each record being removed from the pipe
             Record* newRecord = new Record();  // Ensure each record gets its own memory
             newRecord->Copy(record);  // Copy the contents of the current record into the new one
             records.push_back(newRecord);  // Push the unique pointer to the vector
-
-            if (this->in.Remove(record) == 0) {
+            
+            if (this->in.Remove(record) == 1) {
+                numRecs++;
+            } else {
                 break;
             }
         }
 
+        std::cout << "Vector Length: " << records.size() << "\tnumRuns: " << numRuns << endl;
         // Sort the records vector
         std::sort(records.begin(), records.end(), [&](Record* left, Record* right) {
             return compare.Compare(left, right, &sortOrder) > 0;
         });
 
+        int currentRecords = 0;
         // Push sorted records to the file
-        for (Record* record : records) {
+        for (Record* tempRecord : records) {
             // Append records to the page
-            if (page.Append(record) == 0) {  // If page is full, push it to the file
-                std::cout << "Next page\n";
+            currentRecords++;
+            if (page.Append(tempRecord) == 0) {  // If page is full, push it to the file
+                std::cout << "Next page.  Starting at " << currentRecords << " records.\n";
                 file.AddPage(&page, file.GetLength());
                 numPages++;
                 page.EmptyItOut();
-                page.Append(record);  // Append the remaining record to the new page
+                page.Append(tempRecord);  // Append the remaining record to the new page
             }
         }
 
@@ -87,6 +99,7 @@ void BigQ::sortWorker() {
     }
 
     runSecondPhaseTPMMS(out, sortOrder, runLength, numRuns);
+    //testPhaseOne();
     
     file.Close();
     out.ShutDown();
@@ -205,4 +218,24 @@ BigQ::~BigQ () {
 
 int BigQ::sort (std::vector<Record*> &records){
 	return 0;
+}
+
+void BigQ::testPhaseOne() {
+    // Record to hold the data extracted from the pages
+    Record* record = new Record();
+    Page page;
+    int totalPages = file.GetLength();  // Get the total number of pages in the file
+
+    // Iterate through each page in the file
+    for (int pageIndex = 0; pageIndex < totalPages - 1; ++pageIndex) {  // Note: file.GetLength() returns pages + 1
+        file.GetPage(&page, pageIndex);  // Load the page from the file
+
+        // Iterate through all records in the page
+        while (page.GetFirst(record) != 0) {
+            out.Insert(record);  // Insert each record into the output pipe
+        }
+    }
+
+    // Clean up the allocated memory
+    delete record;
 }

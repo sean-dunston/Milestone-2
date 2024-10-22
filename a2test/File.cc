@@ -112,8 +112,6 @@ void Page :: FromBinary (char *bits) {
 	// So we need to move it to first mannually after GetPage. 
 
 	// first read the number of records on the page
-	cout << bits << endl;
-
 	if (this == nullptr) {
         std::cerr << "Error: Page::FromBinary called on a null object" << std::endl;
         return;

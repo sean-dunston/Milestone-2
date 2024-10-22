@@ -29,7 +29,7 @@ private:
 
 public:
     // Constructor: Initializes the BigQ with input and output pipes, sorting order, and run length
-    BigQ(Pipe &inPipe, Pipe &outPipe, OrderMaker &sortOrder, int runLen);
+    BigQ(Pipe &inPipe, Pipe &outPipe, const OrderMaker &sortOrder, int runLen);
 
     void sortWorker();
 
@@ -38,6 +38,8 @@ public:
     // Destructor: Joins the worker thread and closes the file
     ~BigQ();
     int sort(std::vector<Record *> &records);
+
+    void testPhaseOne();
 };
 
 #endif //  BIGQ_H

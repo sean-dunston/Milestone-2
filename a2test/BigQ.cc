@@ -93,9 +93,6 @@ void BigQ::sortWorker() {
         runStart.at(numRuns) = file.GetLength();
         // Cleanup and prepare for the next batch of records
         page.EmptyItOut();
-        for (Record* rec : records) {
-            //delete rec;  // Free the memory allocated for each unique record
-        }
         records.clear();  // Clear the vector for the next run
     }
 
@@ -187,7 +184,7 @@ void BigQ::runSecondPhaseTPMMS(Pipe& outputPipe, OrderMaker& sortOrder, int runL
         // If no record is available in the current page, move to the next page within the same run
         if (!recordAvailable) {
             pageOffset[runIndex]++;  // Move to the next page in the run
-            int pageNumber = runIndex * runLength + pageOffset[runIndex];  // Calculate the next page number
+            int pageNumber = runStart.at(runIndex) + pageOffset[runIndex];  // Calculate the next page number
 
             if (pageOffset[runIndex] < runLength && pageNumber < totalPages) {
                 // Load the next page in the run if there are more pages

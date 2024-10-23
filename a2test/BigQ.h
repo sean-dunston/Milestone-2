@@ -33,11 +33,11 @@ public:
 
     void sortWorker();
 
-    void runSecondPhaseTPMMS(Pipe &outputPipe, OrderMaker &sortOrder, int runLength, int numRuns);
-
     // Destructor: Joins the worker thread and closes the file
     ~BigQ();
     int sort(std::vector<Record *> &records);
+
+    void runSecondPhaseTPMMS(Pipe &outputPipe, OrderMaker &sortOrder, int runLength, int numRuns, std::vector<int> runStart);
 
     void testPhaseOne();
 };
